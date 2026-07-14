@@ -61,8 +61,8 @@ Each notification looks like this:
   A repo only notifies again after it has been **off the trending list for a full day**, so
   the same project won't ping you twice for one trending streak.
 - **Self-hosting state.** After each run the workflow commits the updated state back to the
-  repository as `github-actions[bot]`. Those commits double as activity, so GitHub never
-  auto-disables the scheduled workflow for inactivity.
+  repository. Those commits double as activity, so GitHub never auto-disables the scheduled
+  workflow for inactivity.
 - **Never loses a notification.** A repo is only recorded as *seen* after its message sends
   successfully. A failed send simply retries on the next run.
 - **Graceful image fallback.** If a repository's preview image can't be fetched, Trendify

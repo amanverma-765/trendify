@@ -205,6 +205,15 @@ def main():
             pruned += 1
 
     save_state(state)
+
+    # Expose the new-repo count so CI can attribute the commit: real finds
+    # commit as the repo owner (counts on the heatmap), routine state
+    # refreshes commit as the bot (do not).
+    github_output = os.environ.get("GITHUB_OUTPUT")
+    if github_output:
+        with open(github_output, "a") as f:
+            f.write(f"new_count={notified}\n")
+
     print(
         f"trending={len(repos)} new={notified} failed={failed} "
         f"pruned={pruned} tracked={len(state)}"

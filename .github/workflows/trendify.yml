@@ -26,6 +26,7 @@ jobs:
       - run: pip install -r requirements.txt
 
       - name: Check trending and notify
+        id: run
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -35,14 +36,25 @@ jobs:
       # sends failed (the script exits non-zero on partial failure).
       - name: Commit updated state
         if: always()
+        env:
+          NEW_COUNT: ${{ steps.run.outputs.new_count }}
         run: |
-          # Author as the repo owner so these commits count on the
-          # contribution graph (GitHub credits by verified author email).
-          git config user.name "amanverma-765"
-          git config user.email "akverma4aman@gmail.com"
+          if [ "${NEW_COUNT:-0}" -gt 0 ]; then
+            git config user.name "amanverma-765"
+            git config user.email "akverma4aman@gmail.com"
+            if [ "$NEW_COUNT" -eq 1 ]; then
+              MSG="feat: caught 1 new trending repo 🔥"
+            else
+              MSG="feat: caught ${NEW_COUNT} new trending repos 🔥"
+            fi
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            MSG="chore: refresh trending state"
+          fi
           if ! git diff --quiet -- state/seen.json || [ -n "$(git ls-files --others --exclude-standard state/seen.json)" ]; then
             git add state/seen.json
-            git commit -m "chore: update seen state"
+            git commit -m "$MSG"
             git pull --rebase
             git push
           else
