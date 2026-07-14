@@ -1,0 +1,48 @@
+name: trendify
+
+on:
+  schedule:
+    # Every 3 hours; offset minute because :00 runs are heavily delayed.
+    - cron: '17 */3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: trendify
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Check trending and notify
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main.py
+
+      # always() so successful notifications are persisted even if some
+      # sends failed (the script exits non-zero on partial failure).
+      - name: Commit updated state
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet -- state/seen.json || [ -n "$(git ls-files --others --exclude-standard state/seen.json)" ]; then
+            git add state/seen.json
+            git commit -m "chore: update seen state"
+            git pull --rebase
+            git push
+          else
+            echo "state unchanged, nothing to commit"
+          fi
