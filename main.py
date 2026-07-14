@@ -25,7 +25,7 @@ from bs4 import BeautifulSoup
 
 TRENDING_URL = "https://github.com/trending?since=daily"
 STATE_FILE = Path(__file__).resolve().parent / "state" / "seen.json"
-TTL_HOURS = 48
+TTL_HOURS = 24
 REQUEST_TIMEOUT = 30
 USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "

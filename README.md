@@ -8,9 +8,9 @@ sends a Telegram message for each **newly trending** repo.
 - A GitHub Actions cron job (`17 */3 * * *` UTC) scrapes
   `github.com/trending?since=daily` (all languages).
 - Seen repos are tracked in [state/seen.json](state/seen.json) as a
-  **sliding 48-hour window**: every time a repo appears, its timestamp is
+  **sliding 24-hour window**: every time a repo appears, its timestamp is
   refreshed. A repo only notifies again after it has been **absent from
-  trending for 2 full days**.
+  trending for a full day**.
 - The workflow commits the updated state back to this repo as
   `github-actions[bot]`. Those commits also keep the repo "active," so
   GitHub never auto-disables the scheduled workflow.
