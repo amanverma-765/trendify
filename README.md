@@ -4,7 +4,7 @@
 
 **A GitHub trending → Telegram notifier that runs itself.**
 
-Trendify watches the [GitHub trending page](https://github.com/trending) every few hours
+Trendify watches the [GitHub trending page](https://github.com/trending) every 30 minutes
 and posts a clean, card-style Telegram message the moment a new repository starts trending.
 
 <br>
@@ -28,7 +28,7 @@ A live feed of new trending repositories, posted automatically.
 
 ## What it does
 
-Every 3 hours, a GitHub Actions cron job scrapes the trending page, figures out which
+Every 30 minutes, a GitHub Actions cron job scrapes the trending page, figures out which
 repositories are **newly** trending, and sends each one to your Telegram channel as a
 rich photo card — the repository's own GitHub preview image on top, with the details
 below it.
@@ -74,8 +74,8 @@ Each notification looks like this:
 
 ```
 ┌─────────────────────────┐
-│  GitHub Actions (cron)   │   every 3 hours
-│      17 */3 * * *        │
+│  GitHub Actions (cron)   │   every 30 minutes
+│      7,37 * * * *        │
 └────────────┬────────────┘
              │
              ▼
@@ -150,7 +150,7 @@ All settings are constants at the top of [`main.py`](main.py):
 | `REQUEST_TIMEOUT` | `30` | HTTP timeout in seconds |
 
 The cron cadence lives in [`.github/workflows/trendify.yml`](.github/workflows/trendify.yml)
-(`17 */3 * * *` — every 3 hours, offset off the hour because on-the-hour runs are the most
+(`7,37 * * * *` — every 30 minutes, offset off :00/:30 because those slots are the most
 delayed on GitHub's shared schedulers).
 
 ---
@@ -162,7 +162,7 @@ trendify/
 ├── main.py                        # scrape → diff → notify → persist state
 ├── state/seen.json                # sliding-window state, committed by CI
 ├── requirements.txt               # requests, beautifulsoup4
-├── .github/workflows/trendify.yml # the 3-hourly cron + commit-back
+├── .github/workflows/trendify.yml # the half-hourly cron + commit-back
 └── README.md
 ```
 
@@ -172,8 +172,9 @@ trendify/
 
 - **First run notifies everything currently trending** (~15–25 repos). That flood is
   one-time; later runs only report genuinely new entries.
-- **GitHub Actions cron is best-effort** — runs can drift by 15–30 minutes under load.
-  That's fine for a trending digest.
+- **GitHub Actions cron is best-effort** — scheduled runs can be delayed, and under heavy
+  load some ticks are skipped entirely. At a 30-minute cadence that just means the
+  occasional check is late or missed; the next run catches up, so nothing is lost.
 - **Telegram etiquette** — messages are spaced one second apart and honor the API's
   `retry_after` value if rate-limited.
 

@@ -2,8 +2,8 @@ name: trendify
 
 on:
   schedule:
-    # Every 3 hours; offset minute because :00 runs are heavily delayed.
-    - cron: '17 */3 * * *'
+    # Every 30 minutes; offset off :00/:30 because those slots are the most delayed.
+    - cron: '7,37 * * * *'
   workflow_dispatch:
 
 permissions:
