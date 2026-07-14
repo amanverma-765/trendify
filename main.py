@@ -86,34 +86,35 @@ def save_state(state):
 
 
 def format_message(repo):
-    name = html.escape(repo["name"])
-    lines = [f"\U0001f525 <b>{name}</b>"]
-    meta = f"⭐ {repo['stars']}"
-    if repo["stars_today"]:
-        meta += f" ({repo['stars_today']})"
-    if repo["language"]:
-        meta += f" · {repo['language']}"
-    lines.append(html.escape(meta))
+    url = f"https://github.com/{repo['name']}"
+    lines = [
+        "<b>New Trending Repo</b>",
+        "",
+        f'<b><a href="{url}">{html.escape(repo["name"])}</a></b>',
+        "",
+    ]
     if repo["description"]:
-        lines.append(html.escape(repo["description"]))
-    lines.append(f"https://github.com/{repo['name']}")
+        lines += [html.escape(repo["description"]), ""]
+    if repo["language"]:
+        lines.append(f"<b>Language:</b> {html.escape(repo['language'])}")
+    lines.append(f"<b>Stars:</b> ⭐ {html.escape(repo['stars'])}")
+    today = repo["stars_today"].replace("stars today", "").strip()
+    if today:
+        lines.append(f"<b>Stars Today:</b> ⭐ +{html.escape(today)}")
+    lines.append("")
+    lines.append(f'<a href="{url}">↗ View on GitHub</a>')
     return "\n".join(lines)
 
 
-def send_telegram(token, chat_id, text, dry_run):
-    """Send one message. Returns True on success. Retries once on 429."""
-    if dry_run:
-        print(f"--- DRY RUN message ---\n{text}\n")
-        return True
-
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
+def _telegram_call(token, method, payload):
+    """One API call with a single retry on 429. Returns the response or None."""
+    url = f"https://api.telegram.org/bot{token}/{method}"
     for attempt in (1, 2):
         try:
             resp = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT)
         except requests.RequestException as exc:
             print(f"warning: telegram request failed: {exc}", file=sys.stderr)
-            return False
+            return None
         if resp.status_code == 429 and attempt == 1:
             retry_after = 5
             try:
@@ -123,13 +124,42 @@ def send_telegram(token, chat_id, text, dry_run):
             print(f"rate limited, retrying in {retry_after}s", file=sys.stderr)
             time.sleep(retry_after)
             continue
-        if resp.ok:
-            return True
+        return resp
+    return None
+
+
+def send_telegram(token, chat_id, text, image_url, dry_run):
+    """Send the repo card image with the text as caption; fall back to a
+    plain text message if the photo send fails. Returns True on success."""
+    if dry_run:
+        print(f"--- DRY RUN message ---\n{text}\n")
+        return True
+
+    resp = _telegram_call(
+        token,
+        "sendPhoto",
+        {"chat_id": chat_id, "photo": image_url, "caption": text, "parse_mode": "HTML"},
+    )
+    if resp is not None and resp.ok:
+        return True
+    if resp is not None:
+        print(
+            f"warning: sendPhoto failed ({resp.status_code}): {resp.text[:200]}, "
+            "falling back to text message",
+            file=sys.stderr,
+        )
+    resp = _telegram_call(
+        token,
+        "sendMessage",
+        {"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
+    )
+    if resp is not None and resp.ok:
+        return True
+    if resp is not None:
         print(
             f"warning: telegram send failed ({resp.status_code}): {resp.text[:200]}",
             file=sys.stderr,
         )
-        return False
     return False
 
 
@@ -154,7 +184,8 @@ def main():
             continue
         if notified and not dry_run:
             time.sleep(1)  # Telegram allows ~1 msg/sec per chat
-        if send_telegram(token, chat_id, format_message(repo), dry_run):
+        image_url = f"https://opengraph.githubassets.com/trendify/{repo['name']}"
+        if send_telegram(token, chat_id, format_message(repo), image_url, dry_run):
             state[repo["name"]] = now_iso
             notified += 1
         else:
