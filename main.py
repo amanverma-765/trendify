@@ -184,6 +184,8 @@ def main():
             continue
         if notified and not dry_run:
             time.sleep(1)  # Telegram allows ~1 msg/sec per chat
+        # GitHub's social-card image; the first path segment is an
+        # arbitrary cache key, only the owner/repo suffix matters.
         image_url = f"https://opengraph.githubassets.com/trendify/{repo['name']}"
         if send_telegram(token, chat_id, format_message(repo), image_url, dry_run):
             state[repo["name"]] = now_iso

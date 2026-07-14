@@ -36,8 +36,10 @@ jobs:
       - name: Commit updated state
         if: always()
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Author as the repo owner so these commits count on the
+          # contribution graph (GitHub credits by verified author email).
+          git config user.name "amanverma-765"
+          git config user.email "akverma4aman@gmail.com"
           if ! git diff --quiet -- state/seen.json || [ -n "$(git ls-files --others --exclude-standard state/seen.json)" ]; then
             git add state/seen.json
             git commit -m "chore: update seen state"
