@@ -106,12 +106,43 @@ def format_message(repo):
     return "\n".join(lines)
 
 
-def _telegram_call(token, method, payload):
+def fetch_card_image(url):
+    """Download the social-card image ourselves. Telegram's fetcher gets
+    rate-limited by GitHub (429 -> "failed to get HTTP URL content"), so we
+    fetch with retries and upload the bytes instead of passing the URL.
+    Returns the image bytes, or None if it can't be fetched."""
+    for attempt in (1, 2, 3):
+        try:
+            resp = requests.get(
+                url, headers={"User-Agent": USER_AGENT}, timeout=REQUEST_TIMEOUT
+            )
+        except requests.RequestException as exc:
+            print(f"warning: card image fetch failed: {exc}", file=sys.stderr)
+            return None
+        if resp.ok and resp.headers.get("Content-Type", "").startswith("image/"):
+            return resp.content
+        if resp.status_code in (429, 500, 502, 503, 504) and attempt < 3:
+            time.sleep(2 * attempt)  # GitHub generates cards on demand; back off
+            continue
+        print(
+            f"warning: card image fetch failed ({resp.status_code}) for {url}",
+            file=sys.stderr,
+        )
+        return None
+    return None
+
+
+def _telegram_call(token, method, payload, files=None):
     """One API call with a single retry on 429. Returns the response or None."""
     url = f"https://api.telegram.org/bot{token}/{method}"
     for attempt in (1, 2):
         try:
-            resp = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT)
+            if files:
+                resp = requests.post(
+                    url, data=payload, files=files, timeout=REQUEST_TIMEOUT
+                )
+            else:
+                resp = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT)
         except requests.RequestException as exc:
             print(f"warning: telegram request failed: {exc}", file=sys.stderr)
             return None
@@ -130,24 +161,28 @@ def _telegram_call(token, method, payload):
 
 def send_telegram(token, chat_id, text, image_url, dry_run):
     """Send the repo card image with the text as caption; fall back to a
-    plain text message if the photo send fails. Returns True on success."""
+    plain text message if the image can't be fetched or the photo send
+    fails. Returns True on success."""
     if dry_run:
         print(f"--- DRY RUN message ---\n{text}\n")
         return True
 
-    resp = _telegram_call(
-        token,
-        "sendPhoto",
-        {"chat_id": chat_id, "photo": image_url, "caption": text, "parse_mode": "HTML"},
-    )
-    if resp is not None and resp.ok:
-        return True
-    if resp is not None:
-        print(
-            f"warning: sendPhoto failed ({resp.status_code}): {resp.text[:200]}, "
-            "falling back to text message",
-            file=sys.stderr,
+    image = fetch_card_image(image_url)
+    if image is not None:
+        resp = _telegram_call(
+            token,
+            "sendPhoto",
+            {"chat_id": chat_id, "caption": text, "parse_mode": "HTML"},
+            files={"photo": ("card.png", image)},
         )
+        if resp is not None and resp.ok:
+            return True
+        if resp is not None:
+            print(
+                f"warning: sendPhoto failed ({resp.status_code}): {resp.text[:200]}, "
+                "falling back to text message",
+                file=sys.stderr,
+            )
     resp = _telegram_call(
         token,
         "sendMessage",

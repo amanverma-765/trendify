@@ -65,8 +65,10 @@ Each notification looks like this:
   workflow for inactivity.
 - **Never loses a notification.** A repo is only recorded as *seen* after its message sends
   successfully. A failed send simply retries on the next run.
-- **Graceful image fallback.** If a repository's preview image can't be fetched, Trendify
-  automatically falls back to a plain text message so the alert still goes out.
+- **Graceful image fallback.** Trendify downloads each repository's preview image itself
+  (retrying if GitHub rate-limits) and uploads it to Telegram directly — Telegram's own
+  URL fetcher is easily rate-limited by GitHub. If the image still can't be fetched,
+  it falls back to a plain text message so the alert always goes out.
 
 ---
 
