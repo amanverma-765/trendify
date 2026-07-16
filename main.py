@@ -98,9 +98,6 @@ def format_message(repo):
     if repo["language"]:
         lines.append(f"<b>Language:</b> {html.escape(repo['language'])}")
     lines.append(f"<b>Stars:</b> ⭐ {html.escape(repo['stars'])}")
-    today = repo["stars_today"].replace("stars today", "").strip()
-    if today:
-        lines.append(f"<b>Stars Today:</b> ⭐ +{html.escape(today)}")
     lines.append("")
     lines.append(f'<a href="{url}">↗ View on GitHub</a>')
     return "\n".join(lines)
