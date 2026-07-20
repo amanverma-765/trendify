@@ -183,7 +183,12 @@ def send_telegram(token, chat_id, text, image_url, dry_run):
     resp = _telegram_call(
         token,
         "sendMessage",
-        {"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
+        {
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+        },
     )
     if resp is not None and resp.ok:
         return True
