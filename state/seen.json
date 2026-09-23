@@ -1,20 +1,10 @@
 {
-  "BuilderIO/agent-native": "2026-09-22T06:44:43+00:00",
-  "Crosstalk-Solutions/project-nomad": "2026-09-22T06:44:43+00:00",
-  "Open-Dev-Society/OpenStock": "2026-09-22T06:44:43+00:00",
-  "agent-substrate/substrate": "2026-09-23T01:42:58+00:00",
-  "akitaonrails/ai-memory": "2026-09-22T06:44:43+00:00",
-  "anthropics/financial-services": "2026-09-23T01:42:58+00:00",
-  "browser-use/video-use": "2026-09-23T01:42:58+00:00",
-  "cloudflare/quiche": "2026-09-22T06:44:43+00:00",
-  "coder/coder": "2026-09-22T06:44:43+00:00",
-  "davila7/claude-code-templates": "2026-09-23T01:42:58+00:00",
-  "dream-num/univer": "2026-09-23T01:42:58+00:00",
-  "google/ax": "2026-09-23T01:42:58+00:00",
-  "mvt-project/mvt": "2026-09-23T01:42:58+00:00",
-  "ruanyf/weekly": "2026-09-22T06:44:43+00:00",
-  "superdesigndev/treg": "2026-09-23T01:42:58+00:00",
-  "trycua/cua": "2026-09-22T06:44:43+00:00",
-  "yynxxxxx/Codex-X": "2026-09-22T06:44:43+00:00",
-  "zhouxiaoka/autoclip": "2026-09-22T06:44:43+00:00"
+  "agent-substrate/substrate": "2026-09-23T07:40:12+00:00",
+  "anthropics/financial-services": "2026-09-23T07:40:12+00:00",
+  "browser-use/video-use": "2026-09-23T07:40:12+00:00",
+  "davila7/claude-code-templates": "2026-09-23T07:40:12+00:00",
+  "dream-num/univer": "2026-09-23T07:40:12+00:00",
+  "google/ax": "2026-09-23T07:40:12+00:00",
+  "mvt-project/mvt": "2026-09-23T07:40:12+00:00",
+  "superdesigndev/treg": "2026-09-23T07:40:12+00:00"
 }
