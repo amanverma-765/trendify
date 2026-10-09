@@ -9,7 +9,7 @@ import main
 
 
 class TestTrendingParser(unittest.TestCase):
-    def test_parse_trending_success(self):
+    def test_parse_trending_success(self) -> None:
         html_doc = """
         <html>
           <body>
@@ -36,7 +36,7 @@ class TestTrendingParser(unittest.TestCase):
             },
         )
 
-    def test_parse_trending_missing_optional_fields(self):
+    def test_parse_trending_missing_optional_fields(self) -> None:
         html_doc = """
         <article class="Box-row">
           <h2><a href="/minimal/repo">minimal / repo</a></h2>
@@ -55,14 +55,14 @@ class TestTrendingParser(unittest.TestCase):
             },
         )
 
-    def test_parse_trending_empty_markup_raises_runtime_error(self):
+    def test_parse_trending_empty_markup_raises_runtime_error(self) -> None:
         html_doc = "<html><body><div>Empty page</div></body></html>"
         with self.assertRaises(RuntimeError) as ctx:
             main.parse_trending(html_doc)
         self.assertIn("Parsed 0 repos", str(ctx.exception))
 
     @patch("main.requests.get")
-    def test_fetch_trending_delegates_to_parser(self, mock_get):
+    def test_fetch_trending_delegates_to_parser(self, mock_get: MagicMock) -> None:
         mock_resp = MagicMock()
         mock_resp.text = """
         <article class="Box-row">
@@ -78,7 +78,7 @@ class TestTrendingParser(unittest.TestCase):
 
 
 class TestTrendingState(unittest.TestCase):
-    def test_is_seen_and_touch(self):
+    def test_is_seen_and_touch(self) -> None:
         state = main.TrendingState()
         self.assertFalse(state.is_seen("org/repo"))
         self.assertNotIn("org/repo", state)
@@ -92,7 +92,7 @@ class TestTrendingState(unittest.TestCase):
         self.assertEqual(len(state), 1)
         self.assertEqual(state._entries["org/repo"], "2026-10-09T12:00:00+00:00")
 
-    def test_sliding_window_refresh(self):
+    def test_sliding_window_refresh(self) -> None:
         old_time = datetime(2026, 10, 8, 10, 0, 0, tzinfo=timezone.utc)
         new_time = datetime(2026, 10, 9, 10, 0, 0, tzinfo=timezone.utc)
         state = main.TrendingState(entries={"org/repo": old_time.isoformat()})
@@ -100,7 +100,7 @@ class TestTrendingState(unittest.TestCase):
         state.touch("org/repo", timestamp=new_time)
         self.assertEqual(state._entries["org/repo"], new_time.isoformat())
 
-    def test_prune_expired_and_corrupt_entries(self):
+    def test_prune_expired_and_corrupt_entries(self) -> None:
         now = datetime(2026, 10, 9, 12, 0, 0, tzinfo=timezone.utc)
         fresh_time = (now - timedelta(hours=5)).isoformat()
         expired_time = (now - timedelta(hours=25)).isoformat()
@@ -119,11 +119,14 @@ class TestTrendingState(unittest.TestCase):
         self.assertFalse(state.is_seen("broken/repo"))
         self.assertEqual(len(state), 1)
 
-    def test_save_and_load_roundtrip(self):
+    def test_save_and_load_roundtrip(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             file_path = Path(tmpdir) / "sub" / "seen.json"
             state = main.TrendingState(
-                entries={"b/repo": "2026-10-09T12:00:00+00:00", "a/repo": "2026-10-09T11:00:00+00:00"},
+                entries={
+                    "b/repo": "2026-10-09T12:00:00+00:00",
+                    "a/repo": "2026-10-09T11:00:00+00:00",
+                },
                 path=file_path,
             )
             state.save()
@@ -138,7 +141,7 @@ class TestTrendingState(unittest.TestCase):
             self.assertTrue(loaded.is_seen("a/repo"))
             self.assertTrue(loaded.is_seen("b/repo"))
 
-    def test_load_recovery_from_missing_and_corrupt_files(self):
+    def test_load_recovery_from_missing_and_corrupt_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             nonexistent = Path(tmpdir) / "missing.json"
             state = main.TrendingState.load(nonexistent)
@@ -156,8 +159,8 @@ class TestTrendingState(unittest.TestCase):
 
 
 class TestNotifier(unittest.TestCase):
-    def setUp(self):
-        self.repo = {
+    def setUp(self) -> None:
+        self.repo: main.Repo = {
             "name": "test-owner/test-repo",
             "description": "Test description",
             "language": "Python",
@@ -165,75 +168,95 @@ class TestNotifier(unittest.TestCase):
             "stars_today": "100",
         }
 
-    def test_format_message(self):
+    def test_format_message(self) -> None:
         msg = main.format_message(self.repo)
         self.assertNotIn("↗ View on GitHub</a>", msg)
         self.assertIn("<b>Stars:</b> ⭐ 1,234", msg)
         self.assertTrue(msg.endswith("<b>Stars:</b> ⭐ 1,234"))
 
-    def test_dry_run_notifier(self):
+    def test_dry_run_notifier(self) -> None:
         notifier = main.DryRunNotifier()
         self.assertTrue(notifier.send(self.repo))
 
-    @patch.object(main.TelegramNotifier, "_fetch_card_image", return_value=b"fake-image")
-    @patch.object(main.TelegramNotifier, "_telegram_call")
-    def test_telegram_notifier_photo_success(self, mock_call, mock_img):
-        mock_resp = MagicMock()
-        mock_resp.ok = True
-        mock_call.return_value = mock_resp
+    @patch("main.requests.get")
+    @patch("main.requests.post")
+    def test_telegram_notifier_photo_success(
+        self, mock_post: MagicMock, mock_get: MagicMock
+    ) -> None:
+        mock_get.return_value = MagicMock(
+            ok=True,
+            status_code=200,
+            headers={"Content-Type": "image/png"},
+            content=b"fake-image",
+        )
+        mock_post.return_value = MagicMock(ok=True, status_code=200)
 
         notifier = main.TelegramNotifier("token", "123")
         self.assertTrue(notifier.send(self.repo))
 
-        mock_call.assert_called_once()
-        method, payload = mock_call.call_args[0][0], mock_call.call_args[0][1]
-        self.assertEqual(method, "sendPhoto")
-        reply_markup = json.loads(payload["reply_markup"])
+        mock_get.assert_called_once_with(
+            "https://opengraph.githubassets.com/trendify/test-owner/test-repo",
+            headers={"User-Agent": main.USER_AGENT},
+            timeout=main.REQUEST_TIMEOUT,
+        )
+        mock_post.assert_called_once()
+        args, kwargs = mock_post.call_args
+        self.assertEqual(args[0], "https://api.telegram.org/bottoken/sendPhoto")
+        self.assertEqual(kwargs["data"]["chat_id"], "123")
+        reply_markup = json.loads(kwargs["data"]["reply_markup"])
         self.assertEqual(
             reply_markup["inline_keyboard"],
-            [[{"text": "↗ View on GitHub", "url": "https://github.com/test-owner/test-repo"}]],
+            [
+                [
+                    {
+                        "text": "↗ View on GitHub",
+                        "url": "https://github.com/test-owner/test-repo",
+                    }
+                ]
+            ],
         )
+        self.assertIn("photo", kwargs["files"])
 
-    @patch.object(main.TelegramNotifier, "_fetch_card_image", return_value=None)
-    @patch.object(main.TelegramNotifier, "_telegram_call")
-    def test_telegram_notifier_photo_fails_text_fallback(self, mock_call, mock_img):
-        mock_resp = MagicMock()
-        mock_resp.ok = True
-        mock_call.return_value = mock_resp
+    @patch("main.requests.get")
+    @patch("main.requests.post")
+    def test_telegram_notifier_photo_fails_text_fallback(
+        self, mock_post: MagicMock, mock_get: MagicMock
+    ) -> None:
+        # Image fetch returns non-image content
+        mock_get.return_value = MagicMock(ok=False, status_code=404, headers={})
+        mock_post.return_value = MagicMock(ok=True, status_code=200)
 
         notifier = main.TelegramNotifier("token", "123")
         self.assertTrue(notifier.send(self.repo))
 
-        mock_call.assert_called_once()
-        method, payload = mock_call.call_args[0][0], mock_call.call_args[0][1]
-        self.assertEqual(method, "sendMessage")
+        mock_post.assert_called_once()
+        args, kwargs = mock_post.call_args
+        self.assertEqual(args[0], "https://api.telegram.org/bottoken/sendMessage")
+        self.assertEqual(kwargs["json"]["chat_id"], "123")
         self.assertEqual(
-            payload["reply_markup"]["inline_keyboard"],
-            [[{"text": "↗ View on GitHub", "url": "https://github.com/test-owner/test-repo"}]],
+            kwargs["json"]["reply_markup"]["inline_keyboard"],
+            [
+                [
+                    {
+                        "text": "↗ View on GitHub",
+                        "url": "https://github.com/test-owner/test-repo",
+                    }
+                ]
+            ],
         )
 
-    @patch.object(main.TelegramNotifier, "_fetch_card_image", return_value=None)
-    @patch.object(main.TelegramNotifier, "_telegram_call")
-    def test_telegram_notifier_both_fail_returns_false(self, mock_call, mock_img):
-        mock_resp = MagicMock()
-        mock_resp.ok = False
-        mock_resp.status_code = 500
-        mock_resp.text = "Internal error"
-        mock_call.return_value = mock_resp
+    @patch("main.requests.get")
+    @patch("main.requests.post")
+    def test_telegram_notifier_both_fail_returns_false(
+        self, mock_post: MagicMock, mock_get: MagicMock
+    ) -> None:
+        mock_get.return_value = MagicMock(ok=False, status_code=404, headers={})
+        mock_post.return_value = MagicMock(
+            ok=False, status_code=500, text="Internal error"
+        )
 
         notifier = main.TelegramNotifier("token", "123")
         self.assertFalse(notifier.send(self.repo))
-
-    def test_send_telegram_wrapper(self):
-        res = main.send_telegram(
-            "token",
-            "123",
-            "text",
-            "https://img.url",
-            "https://github.com/test-owner/test-repo",
-            dry_run=True,
-        )
-        self.assertTrue(res)
 
 
 if __name__ == "__main__":

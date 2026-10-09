@@ -17,30 +17,43 @@ import json
 import os
 import sys
 import time
+from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any, Protocol, TypedDict
 
 import requests
 from bs4 import BeautifulSoup
 
-TRENDING_URL = "https://github.com/trending?since=daily"
-STATE_FILE = Path(__file__).resolve().parent / "state" / "seen.json"
-TTL_HOURS = 24
-REQUEST_TIMEOUT = 30
-USER_AGENT = (
+TRENDING_URL: str = "https://github.com/trending?since=daily"
+STATE_FILE: Path = Path(__file__).resolve().parent / "state" / "seen.json"
+TTL_HOURS: int = 24
+REQUEST_TIMEOUT: int = 30
+USER_AGENT: str = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 )
 
 
-def parse_trending(html_text):
+class Repo(TypedDict):
+    name: str
+    description: str
+    language: str
+    stars: str
+    stars_today: str
+
+
+def parse_trending(html_text: str) -> list[Repo]:
     """Parse GitHub trending HTML markup into repository records.
     Raises RuntimeError if no repositories can be parsed."""
     soup = BeautifulSoup(html_text, "html.parser")
-    repos = []
+    repos: list[Repo] = []
     for row in soup.select("article.Box-row"):
         link = row.select_one("h2 a")
-        if not link or not link.get("href"):
+        if not link:
+            continue
+        href = link.get("href")
+        if not isinstance(href, str) or not href:
             continue
         desc = row.select_one("p")
         lang = row.select_one('span[itemprop="programmingLanguage"]')
@@ -48,7 +61,7 @@ def parse_trending(html_text):
         today = row.select_one("span.d-inline-block.float-sm-right")
         repos.append(
             {
-                "name": link["href"].strip("/"),
+                "name": href.strip("/"),
                 "description": desc.get_text(strip=True) if desc else "",
                 "language": lang.get_text(strip=True) if lang else "",
                 "stars": stars.get_text(strip=True) if stars else "?",
@@ -63,7 +76,7 @@ def parse_trending(html_text):
     return repos
 
 
-def fetch_trending(url=TRENDING_URL):
+def fetch_trending(url: str = TRENDING_URL) -> list[Repo]:
     """Fetch the trending page and parse repositories. Raises if network fails
     or markup cannot be parsed."""
     resp = requests.get(
@@ -77,12 +90,16 @@ class TrendingState:
     """Encapsulates sliding-window trending repository state persistence,
     deduplication, sliding-window updates, and TTL-based pruning."""
 
-    def __init__(self, entries=None, path=None):
-        self._entries = dict(entries) if entries is not None else {}
-        self.path = Path(path) if path is not None else None
+    def __init__(
+        self,
+        entries: Mapping[str, str] | None = None,
+        path: Path | str | None = None,
+    ) -> None:
+        self._entries: dict[str, str] = dict(entries) if entries is not None else {}
+        self.path: Path | None = Path(path) if path is not None else None
 
     @classmethod
-    def load(cls, path=STATE_FILE):
+    def load(cls, path: Path | str = STATE_FILE) -> "TrendingState":
         """Load state from disk, recovering gracefully from missing or corrupt files."""
         target = Path(path)
         try:
@@ -94,16 +111,16 @@ class TrendingState:
             pass
         return cls(entries={}, path=target)
 
-    def is_seen(self, name):
+    def is_seen(self, name: str) -> bool:
         """Check if repository was already recorded within the sliding window."""
         return name in self._entries
 
-    def touch(self, name, timestamp=None):
+    def touch(self, name: str, timestamp: datetime | None = None) -> None:
         """Update or record the last_seen timestamp for a repository."""
         ts = (timestamp or datetime.now(timezone.utc)).isoformat(timespec="seconds")
         self._entries[name] = ts
 
-    def prune(self, ttl_hours=TTL_HOURS, now=None):
+    def prune(self, ttl_hours: int = TTL_HOURS, now: datetime | None = None) -> int:
         """Remove entries older than ttl_hours or with invalid timestamps.
         Returns the number of pruned entries."""
         cutoff = (now or datetime.now(timezone.utc)) - timedelta(hours=ttl_hours)
@@ -118,7 +135,7 @@ class TrendingState:
                 pruned += 1
         return pruned
 
-    def save(self, path=None):
+    def save(self, path: Path | str | None = None) -> None:
         """Persist state to disk in deterministic sorted JSON format."""
         target = Path(path) if path is not None else self.path
         if target is None:
@@ -128,24 +145,14 @@ class TrendingState:
             json.dump(dict(sorted(self._entries.items())), f, indent=2)
             f.write("\n")
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._entries)
 
-    def __contains__(self, name):
-        return self.is_seen(name)
+    def __contains__(self, name: object) -> bool:
+        return isinstance(name, str) and self.is_seen(name)
 
 
-def load_state(path=STATE_FILE):
-    """Backward-compatible helper for loading state dictionary."""
-    return TrendingState.load(path)._entries
-
-
-def save_state(state, path=STATE_FILE):
-    """Backward-compatible helper for saving state dictionary."""
-    TrendingState(state, path=path).save()
-
-
-def format_message(repo):
+def format_message(repo: Repo) -> str:
     """Format a trending repository record as an HTML message body."""
     url = f"https://github.com/{repo['name']}"
     lines = [
@@ -162,17 +169,16 @@ def format_message(repo):
     return "\n".join(lines)
 
 
-class Notifier:
+class Notifier(Protocol):
     """Delivery interface seam for repository notifications."""
 
-    def send(self, repo):
-        raise NotImplementedError
+    def send(self, repo: Repo) -> bool: ...
 
 
-class DryRunNotifier(Notifier):
+class DryRunNotifier:
     """Dry-run delivery adapter: formats message and prints preview to stdout."""
 
-    def send(self, repo):
+    def send(self, repo: Repo) -> bool:
         text = format_message(repo)
         repo_url = f"https://github.com/{repo['name']}"
         print(
@@ -182,29 +188,29 @@ class DryRunNotifier(Notifier):
         return True
 
 
-class TelegramNotifier(Notifier):
+class TelegramNotifier:
     """Telegram delivery adapter: handles card fetching, photo upload with inline button,
     fallback to text message, and HTTP 429 rate limit backoff."""
 
     def __init__(
         self,
-        token,
-        chat_id,
-        timeout=REQUEST_TIMEOUT,
-        user_agent=USER_AGENT,
-    ):
+        token: str,
+        chat_id: str,
+        timeout: int = REQUEST_TIMEOUT,
+        user_agent: str = USER_AGENT,
+    ) -> None:
         self.token = token
         self.chat_id = chat_id
         self.timeout = timeout
         self.user_agent = user_agent
 
-    def send(self, repo):
+    def send(self, repo: Repo) -> bool:
         text = format_message(repo)
         repo_url = f"https://github.com/{repo['name']}"
         image_url = f"https://opengraph.githubassets.com/trendify/{repo['name']}"
         return self._deliver(text, image_url, repo_url)
 
-    def _deliver(self, text, image_url, repo_url):
+    def _deliver(self, text: str, image_url: str, repo_url: str) -> bool:
         reply_markup = {
             "inline_keyboard": [[{"text": "↗ View on GitHub", "url": repo_url}]]
         }
@@ -249,7 +255,7 @@ class TelegramNotifier(Notifier):
             )
         return False
 
-    def _fetch_card_image(self, url):
+    def _fetch_card_image(self, url: str) -> bytes | None:
         """Download the social-card image ourselves. Telegram's fetcher gets
         rate-limited by GitHub (429 -> 'failed to get HTTP URL content'), so we
         fetch with retries and upload the bytes instead of passing the URL."""
@@ -273,7 +279,12 @@ class TelegramNotifier(Notifier):
             return None
         return None
 
-    def _telegram_call(self, method, payload, files=None):
+    def _telegram_call(
+        self,
+        method: str,
+        payload: dict[str, Any],
+        files: Mapping[str, Any] | None = None,
+    ) -> requests.Response | None:
         """One API call with a single retry on 429."""
         url = f"https://api.telegram.org/bot{self.token}/{method}"
         for attempt in (1, 2):
@@ -300,34 +311,16 @@ class TelegramNotifier(Notifier):
         return None
 
 
-def fetch_card_image(url):
-    """Backward-compatible helper for fetching card image."""
-    return TelegramNotifier("", "")._fetch_card_image(url)
-
-
-def _telegram_call(token, method, payload, files=None):
-    """Backward-compatible helper for Telegram API calls."""
-    return TelegramNotifier(token, "")._telegram_call(method, payload, files=files)
-
-
-def send_telegram(token, chat_id, text, image_url, repo_url, dry_run):
-    """Backward-compatible wrapper for sending Telegram messages."""
-    if dry_run:
-        print(
-            f"--- DRY RUN message ---\n{text}\n[Button: ↗ View on GitHub -> {repo_url}]\n"
-        )
-        return True
-    return TelegramNotifier(token, chat_id)._deliver(text, image_url, repo_url)
-
-
-def main():
+def main() -> None:
     dry_run = os.environ.get("DRY_RUN") == "1"
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
     if not dry_run and not (token and chat_id):
         sys.exit("Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID, or use DRY_RUN=1")
 
-    notifier = DryRunNotifier() if dry_run else TelegramNotifier(token, chat_id)
+    notifier: Notifier = (
+        DryRunNotifier() if dry_run else TelegramNotifier(token, chat_id)
+    )
     repos = fetch_trending()
     state = TrendingState.load(STATE_FILE)
 
