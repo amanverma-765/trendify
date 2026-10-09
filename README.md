@@ -47,7 +47,9 @@ Each notification looks like this:
 > **Stars:** ⭐ 69,011
 > **Stars Today:** ⭐ +4,349
 >
-> ↗ View on GitHub
+> ┌─────────────────────────┐
+> │    ↗ View on GitHub     │ ← inline button
+> └─────────────────────────┘
 
 ---
 

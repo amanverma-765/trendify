@@ -33,14 +33,10 @@ USER_AGENT = (
 )
 
 
-def fetch_trending():
-    """Scrape the trending page. Raises if the page can't be parsed."""
-    resp = requests.get(
-        TRENDING_URL, headers={"User-Agent": USER_AGENT}, timeout=REQUEST_TIMEOUT
-    )
-    resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "html.parser")
-
+def parse_trending(html_text):
+    """Parse GitHub trending HTML markup into repository records.
+    Raises RuntimeError if no repositories can be parsed."""
+    soup = BeautifulSoup(html_text, "html.parser")
     repos = []
     for row in soup.select("article.Box-row"):
         link = row.select_one("h2 a")
@@ -67,25 +63,90 @@ def fetch_trending():
     return repos
 
 
-def load_state():
-    try:
-        with open(STATE_FILE) as f:
-            state = json.load(f)
-        if isinstance(state, dict):
-            return state
-    except (FileNotFoundError, json.JSONDecodeError):
-        pass
-    return {}
+def fetch_trending(url=TRENDING_URL):
+    """Fetch the trending page and parse repositories. Raises if network fails
+    or markup cannot be parsed."""
+    resp = requests.get(
+        url, headers={"User-Agent": USER_AGENT}, timeout=REQUEST_TIMEOUT
+    )
+    resp.raise_for_status()
+    return parse_trending(resp.text)
 
 
-def save_state(state):
-    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(STATE_FILE, "w") as f:
-        json.dump(dict(sorted(state.items())), f, indent=2)
-        f.write("\n")
+class TrendingState:
+    """Encapsulates sliding-window trending repository state persistence,
+    deduplication, sliding-window updates, and TTL-based pruning."""
+
+    def __init__(self, entries=None, path=None):
+        self._entries = dict(entries) if entries is not None else {}
+        self.path = Path(path) if path is not None else None
+
+    @classmethod
+    def load(cls, path=STATE_FILE):
+        """Load state from disk, recovering gracefully from missing or corrupt files."""
+        target = Path(path)
+        try:
+            with open(target, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return cls(entries=data, path=target)
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            pass
+        return cls(entries={}, path=target)
+
+    def is_seen(self, name):
+        """Check if repository was already recorded within the sliding window."""
+        return name in self._entries
+
+    def touch(self, name, timestamp=None):
+        """Update or record the last_seen timestamp for a repository."""
+        ts = (timestamp or datetime.now(timezone.utc)).isoformat(timespec="seconds")
+        self._entries[name] = ts
+
+    def prune(self, ttl_hours=TTL_HOURS, now=None):
+        """Remove entries older than ttl_hours or with invalid timestamps.
+        Returns the number of pruned entries."""
+        cutoff = (now or datetime.now(timezone.utc)) - timedelta(hours=ttl_hours)
+        pruned = 0
+        for name, last_seen in list(self._entries.items()):
+            try:
+                expired = datetime.fromisoformat(last_seen) < cutoff
+            except (ValueError, TypeError):
+                expired = True
+            if expired:
+                del self._entries[name]
+                pruned += 1
+        return pruned
+
+    def save(self, path=None):
+        """Persist state to disk in deterministic sorted JSON format."""
+        target = Path(path) if path is not None else self.path
+        if target is None:
+            return
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with open(target, "w", encoding="utf-8") as f:
+            json.dump(dict(sorted(self._entries.items())), f, indent=2)
+            f.write("\n")
+
+    def __len__(self):
+        return len(self._entries)
+
+    def __contains__(self, name):
+        return self.is_seen(name)
+
+
+def load_state(path=STATE_FILE):
+    """Backward-compatible helper for loading state dictionary."""
+    return TrendingState.load(path)._entries
+
+
+def save_state(state, path=STATE_FILE):
+    """Backward-compatible helper for saving state dictionary."""
+    TrendingState(state, path=path).save()
 
 
 def format_message(repo):
+    """Format a trending repository record as an HTML message body."""
     url = f"https://github.com/{repo['name']}"
     lines = [
         "<b>New Trending Repo</b>",
@@ -93,111 +154,170 @@ def format_message(repo):
         f'<b><a href="{url}">{html.escape(repo["name"])}</a></b>',
         "",
     ]
-    if repo["description"]:
+    if repo.get("description"):
         lines += [html.escape(repo["description"]), ""]
-    if repo["language"]:
+    if repo.get("language"):
         lines.append(f"<b>Language:</b> {html.escape(repo['language'])}")
-    lines.append(f"<b>Stars:</b> ⭐ {html.escape(repo['stars'])}")
-    lines.append("")
-    lines.append(f'<a href="{url}">↗ View on GitHub</a>')
+    lines.append(f"<b>Stars:</b> ⭐ {html.escape(repo.get('stars', '?'))}")
     return "\n".join(lines)
 
 
-def fetch_card_image(url):
-    """Download the social-card image ourselves. Telegram's fetcher gets
-    rate-limited by GitHub (429 -> "failed to get HTTP URL content"), so we
-    fetch with retries and upload the bytes instead of passing the URL.
-    Returns the image bytes, or None if it can't be fetched."""
-    for attempt in (1, 2, 3):
-        try:
-            resp = requests.get(
-                url, headers={"User-Agent": USER_AGENT}, timeout=REQUEST_TIMEOUT
-            )
-        except requests.RequestException as exc:
-            print(f"warning: card image fetch failed: {exc}", file=sys.stderr)
-            return None
-        if resp.ok and resp.headers.get("Content-Type", "").startswith("image/"):
-            return resp.content
-        if resp.status_code in (429, 500, 502, 503, 504) and attempt < 3:
-            time.sleep(2 * attempt)  # GitHub generates cards on demand; back off
-            continue
+class Notifier:
+    """Delivery interface seam for repository notifications."""
+
+    def send(self, repo):
+        raise NotImplementedError
+
+
+class DryRunNotifier(Notifier):
+    """Dry-run delivery adapter: formats message and prints preview to stdout."""
+
+    def send(self, repo):
+        text = format_message(repo)
+        repo_url = f"https://github.com/{repo['name']}"
         print(
-            f"warning: card image fetch failed ({resp.status_code}) for {url}",
-            file=sys.stderr,
+            f"--- DRY RUN message ---\n{text}\n"
+            f"[Button: ↗ View on GitHub -> {repo_url}]\n"
         )
-        return None
-    return None
-
-
-def _telegram_call(token, method, payload, files=None):
-    """One API call with a single retry on 429. Returns the response or None."""
-    url = f"https://api.telegram.org/bot{token}/{method}"
-    for attempt in (1, 2):
-        try:
-            if files:
-                resp = requests.post(
-                    url, data=payload, files=files, timeout=REQUEST_TIMEOUT
-                )
-            else:
-                resp = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT)
-        except requests.RequestException as exc:
-            print(f"warning: telegram request failed: {exc}", file=sys.stderr)
-            return None
-        if resp.status_code == 429 and attempt == 1:
-            retry_after = 5
-            try:
-                retry_after = resp.json()["parameters"]["retry_after"]
-            except (ValueError, KeyError):
-                pass
-            print(f"rate limited, retrying in {retry_after}s", file=sys.stderr)
-            time.sleep(retry_after)
-            continue
-        return resp
-    return None
-
-
-def send_telegram(token, chat_id, text, image_url, dry_run):
-    """Send the repo card image with the text as caption; fall back to a
-    plain text message if the image can't be fetched or the photo send
-    fails. Returns True on success."""
-    if dry_run:
-        print(f"--- DRY RUN message ---\n{text}\n")
         return True
 
-    image = fetch_card_image(image_url)
-    if image is not None:
-        resp = _telegram_call(
-            token,
-            "sendPhoto",
-            {"chat_id": chat_id, "caption": text, "parse_mode": "HTML"},
-            files={"photo": ("card.png", image)},
+
+class TelegramNotifier(Notifier):
+    """Telegram delivery adapter: handles card fetching, photo upload with inline button,
+    fallback to text message, and HTTP 429 rate limit backoff."""
+
+    def __init__(
+        self,
+        token,
+        chat_id,
+        timeout=REQUEST_TIMEOUT,
+        user_agent=USER_AGENT,
+    ):
+        self.token = token
+        self.chat_id = chat_id
+        self.timeout = timeout
+        self.user_agent = user_agent
+
+    def send(self, repo):
+        text = format_message(repo)
+        repo_url = f"https://github.com/{repo['name']}"
+        image_url = f"https://opengraph.githubassets.com/trendify/{repo['name']}"
+        return self._deliver(text, image_url, repo_url)
+
+    def _deliver(self, text, image_url, repo_url):
+        reply_markup = {
+            "inline_keyboard": [[{"text": "↗ View on GitHub", "url": repo_url}]]
+        }
+
+        image = self._fetch_card_image(image_url)
+        if image is not None:
+            resp = self._telegram_call(
+                "sendPhoto",
+                {
+                    "chat_id": self.chat_id,
+                    "caption": text,
+                    "parse_mode": "HTML",
+                    "reply_markup": json.dumps(reply_markup),
+                },
+                files={"photo": ("card.png", image)},
+            )
+            if resp is not None and resp.ok:
+                return True
+            if resp is not None:
+                print(
+                    f"warning: sendPhoto failed ({resp.status_code}): {resp.text[:200]}, "
+                    "falling back to text message",
+                    file=sys.stderr,
+                )
+
+        resp = self._telegram_call(
+            "sendMessage",
+            {
+                "chat_id": self.chat_id,
+                "text": text,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True,
+                "reply_markup": reply_markup,
+            },
         )
         if resp is not None and resp.ok:
             return True
         if resp is not None:
             print(
-                f"warning: sendPhoto failed ({resp.status_code}): {resp.text[:200]}, "
-                "falling back to text message",
+                f"warning: telegram send failed ({resp.status_code}): {resp.text[:200]}",
                 file=sys.stderr,
             )
-    resp = _telegram_call(
-        token,
-        "sendMessage",
-        {
-            "chat_id": chat_id,
-            "text": text,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True,
-        },
-    )
-    if resp is not None and resp.ok:
-        return True
-    if resp is not None:
+        return False
+
+    def _fetch_card_image(self, url):
+        """Download the social-card image ourselves. Telegram's fetcher gets
+        rate-limited by GitHub (429 -> 'failed to get HTTP URL content'), so we
+        fetch with retries and upload the bytes instead of passing the URL."""
+        for attempt in (1, 2, 3):
+            try:
+                resp = requests.get(
+                    url, headers={"User-Agent": self.user_agent}, timeout=self.timeout
+                )
+            except requests.RequestException as exc:
+                print(f"warning: card image fetch failed: {exc}", file=sys.stderr)
+                return None
+            if resp.ok and resp.headers.get("Content-Type", "").startswith("image/"):
+                return resp.content
+            if resp.status_code in (429, 500, 502, 503, 504) and attempt < 3:
+                time.sleep(2 * attempt)
+                continue
+            print(
+                f"warning: card image fetch failed ({resp.status_code}) for {url}",
+                file=sys.stderr,
+            )
+            return None
+        return None
+
+    def _telegram_call(self, method, payload, files=None):
+        """One API call with a single retry on 429."""
+        url = f"https://api.telegram.org/bot{self.token}/{method}"
+        for attempt in (1, 2):
+            try:
+                if files:
+                    resp = requests.post(
+                        url, data=payload, files=files, timeout=self.timeout
+                    )
+                else:
+                    resp = requests.post(url, json=payload, timeout=self.timeout)
+            except requests.RequestException as exc:
+                print(f"warning: telegram request failed: {exc}", file=sys.stderr)
+                return None
+            if resp.status_code == 429 and attempt == 1:
+                retry_after = 5
+                try:
+                    retry_after = resp.json()["parameters"]["retry_after"]
+                except (ValueError, KeyError):
+                    pass
+                print(f"rate limited, retrying in {retry_after}s", file=sys.stderr)
+                time.sleep(retry_after)
+                continue
+            return resp
+        return None
+
+
+def fetch_card_image(url):
+    """Backward-compatible helper for fetching card image."""
+    return TelegramNotifier("", "")._fetch_card_image(url)
+
+
+def _telegram_call(token, method, payload, files=None):
+    """Backward-compatible helper for Telegram API calls."""
+    return TelegramNotifier(token, "")._telegram_call(method, payload, files=files)
+
+
+def send_telegram(token, chat_id, text, image_url, repo_url, dry_run):
+    """Backward-compatible wrapper for sending Telegram messages."""
+    if dry_run:
         print(
-            f"warning: telegram send failed ({resp.status_code}): {resp.text[:200]}",
-            file=sys.stderr,
+            f"--- DRY RUN message ---\n{text}\n[Button: ↗ View on GitHub -> {repo_url}]\n"
         )
-    return False
+        return True
+    return TelegramNotifier(token, chat_id)._deliver(text, image_url, repo_url)
 
 
 def main():
@@ -207,45 +327,31 @@ def main():
     if not dry_run and not (token and chat_id):
         sys.exit("Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID, or use DRY_RUN=1")
 
+    notifier = DryRunNotifier() if dry_run else TelegramNotifier(token, chat_id)
     repos = fetch_trending()
-    state = load_state()
-    now = datetime.now(timezone.utc)
-    now_iso = now.isoformat(timespec="seconds")
+    state = TrendingState.load(STATE_FILE)
 
     notified = 0
     failed = 0
     for repo in repos:
-        if repo["name"] in state:
+        name = repo["name"]
+        if state.is_seen(name):
             # Sliding window: still trending, refresh without notifying.
-            state[repo["name"]] = now_iso
+            state.touch(name)
             continue
         if notified and not dry_run:
             time.sleep(1)  # Telegram allows ~1 msg/sec per chat
-        # GitHub's social-card image; the first path segment is an
-        # arbitrary cache key, only the owner/repo suffix matters.
-        image_url = f"https://opengraph.githubassets.com/trendify/{repo['name']}"
-        if send_telegram(token, chat_id, format_message(repo), image_url, dry_run):
-            state[repo["name"]] = now_iso
+        if notifier.send(repo):
+            state.touch(name)
             notified += 1
         else:
             failed += 1  # not added to state, so it retries next run
 
-    cutoff = now - timedelta(hours=TTL_HOURS)
-    pruned = 0
-    for name, last_seen in list(state.items()):
-        try:
-            expired = datetime.fromisoformat(last_seen) < cutoff
-        except ValueError:
-            expired = True
-        if expired:
-            del state[name]
-            pruned += 1
+    pruned = state.prune(ttl_hours=TTL_HOURS)
+    state.save()
 
-    save_state(state)
-
-    # Expose the new-repo count so CI can attribute the commit: real finds
-    # commit as the repo owner (counts on the heatmap), routine state
-    # refreshes commit as the bot (do not).
+    # Expose the new-repo count so CI can determine the commit message:
+    # "feat: caught..." for new trending repos, "chore: refresh..." otherwise.
     github_output = os.environ.get("GITHUB_OUTPUT")
     if github_output:
         with open(github_output, "a") as f:

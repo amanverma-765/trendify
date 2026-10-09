@@ -39,17 +39,15 @@ jobs:
         env:
           NEW_COUNT: ${{ steps.run.outputs.new_count }}
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if [ "${NEW_COUNT:-0}" -gt 0 ]; then
-            git config user.name "amanverma-765"
-            git config user.email "akverma4aman@gmail.com"
             if [ "$NEW_COUNT" -eq 1 ]; then
               MSG="feat: caught 1 new trending repo 🔥"
             else
               MSG="feat: caught ${NEW_COUNT} new trending repos 🔥"
             fi
           else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             MSG="chore: refresh trending state"
           fi
           if ! git diff --quiet -- state/seen.json || [ -n "$(git ls-files --others --exclude-standard state/seen.json)" ]; then
