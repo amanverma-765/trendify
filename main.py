@@ -152,7 +152,7 @@ class TrendingState:
         return isinstance(name, str) and self.is_seen(name)
 
 
-def format_message(repo: Repo) -> str:
+def format_message(repo: Repo, max_caption_len: int | None = None) -> str:
     """Format a trending repository record as an HTML message body."""
     url = f"https://github.com/{repo['name']}"
     lines = [
@@ -161,8 +161,17 @@ def format_message(repo: Repo) -> str:
         f'<b><a href="{url}">{html.escape(repo["name"])}</a></b>',
         "",
     ]
-    if repo.get("description"):
-        lines += [html.escape(repo["description"]), ""]
+    desc = repo.get("description", "")
+    if desc:
+        if max_caption_len is not None:
+            # Estimate static parts length to keep caption under Telegram limits
+            other_len = sum(len(l) + 1 for l in lines) + len(
+                f"<b>Language:</b> {repo.get('language', '')}\n<b>Stars:</b> ⭐ {repo.get('stars', '')}"
+            )
+            budget = max(max_caption_len - other_len - 15, 20)
+            if len(desc) > budget:
+                desc = desc[:budget].rstrip() + "..."
+        lines += [html.escape(desc), ""]
     if repo.get("language"):
         lines.append(f"<b>Language:</b> {html.escape(repo['language'])}")
     lines.append(f"<b>Stars:</b> ⭐ {html.escape(repo.get('stars', '?'))}")
@@ -205,23 +214,23 @@ class TelegramNotifier:
         self.user_agent = user_agent
 
     def send(self, repo: Repo) -> bool:
-        text = format_message(repo)
+        caption = format_message(repo, max_caption_len=1000)
+        full_text = format_message(repo)
         repo_url = f"https://github.com/{repo['name']}"
-        image_url = f"https://opengraph.githubassets.com/trendify/{repo['name']}"
-        return self._deliver(text, image_url, repo_url)
+        return self._deliver(repo, caption, full_text, repo_url)
 
-    def _deliver(self, text: str, image_url: str, repo_url: str) -> bool:
+    def _deliver(self, repo: Repo, caption: str, full_text: str, repo_url: str) -> bool:
         reply_markup = {
             "inline_keyboard": [[{"text": "↗ View on GitHub", "url": repo_url}]]
         }
 
-        image = self._fetch_card_image(image_url)
+        image = self._fetch_repo_image(repo)
         if image is not None:
             resp = self._telegram_call(
                 "sendPhoto",
                 {
                     "chat_id": self.chat_id,
-                    "caption": text,
+                    "caption": caption,
                     "parse_mode": "HTML",
                     "reply_markup": json.dumps(reply_markup),
                 },
@@ -240,7 +249,7 @@ class TelegramNotifier:
             "sendMessage",
             {
                 "chat_id": self.chat_id,
-                "text": text,
+                "text": full_text,
                 "parse_mode": "HTML",
                 "disable_web_page_preview": True,
                 "reply_markup": reply_markup,
@@ -255,28 +264,38 @@ class TelegramNotifier:
             )
         return False
 
-    def _fetch_card_image(self, url: str) -> bytes | None:
-        """Download the social-card image ourselves. Telegram's fetcher gets
-        rate-limited by GitHub (429 -> 'failed to get HTTP URL content'), so we
-        fetch with retries and upload the bytes instead of passing the URL."""
-        for attempt in (1, 2, 3):
-            try:
-                resp = requests.get(
-                    url, headers={"User-Agent": self.user_agent}, timeout=self.timeout
-                )
-            except requests.RequestException as exc:
-                print(f"warning: card image fetch failed: {exc}", file=sys.stderr)
-                return None
-            if resp.ok and resp.headers.get("Content-Type", "").startswith("image/"):
-                return resp.content
-            if resp.status_code in (429, 500, 502, 503, 504) and attempt < 3:
-                time.sleep(2 * attempt)
-                continue
-            print(
-                f"warning: card image fetch failed ({resp.status_code}) for {url}",
-                file=sys.stderr,
+    def _fetch_image_from_url(self, url: str) -> tuple[int, bytes | None]:
+        """Fetch image bytes from a URL. Returns (status_code, image_bytes_or_none)."""
+        try:
+            resp = requests.get(
+                url, headers={"User-Agent": self.user_agent}, timeout=self.timeout
             )
-            return None
+            if resp.ok and resp.headers.get("Content-Type", "").startswith("image/"):
+                return resp.status_code, resp.content
+            return resp.status_code, None
+        except requests.RequestException as exc:
+            print(f"warning: image fetch failed: {exc}", file=sys.stderr)
+            return 0, None
+
+    def _fetch_repo_image(self, repo: Repo) -> bytes | None:
+        """Fetch repository preview image. Tries the social card first; on 429
+        rate-limiting or failure, immediately falls back to the owner avatar."""
+        card_url = f"https://opengraph.githubassets.com/trendify/{repo['name']}"
+        _, image = self._fetch_image_from_url(card_url)
+        if image is not None:
+            return image
+
+        # Fallback to owner avatar (statically cached on GitHub CDN, no 429 rate limit)
+        owner = repo["name"].split("/")[0]
+        avatar_url = f"https://github.com/{owner}.png"
+        _, image = self._fetch_image_from_url(avatar_url)
+        if image is not None:
+            return image
+
+        print(
+            f"warning: card and avatar image fetch failed for {repo['name']}",
+            file=sys.stderr,
+        )
         return None
 
     def _telegram_call(

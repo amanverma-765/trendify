@@ -174,6 +174,19 @@ class TestNotifier(unittest.TestCase):
         self.assertIn("<b>Stars:</b> ⭐ 1,234", msg)
         self.assertTrue(msg.endswith("<b>Stars:</b> ⭐ 1,234"))
 
+    def test_format_message_caption_truncation(self) -> None:
+        long_repo: main.Repo = {
+            "name": "test-owner/test-repo",
+            "description": "Very long description " * 100,
+            "language": "Python",
+            "stars": "1,234",
+            "stars_today": "100",
+        }
+        caption = main.format_message(long_repo, max_caption_len=1000)
+        self.assertLessEqual(len(caption), 1000)
+        self.assertTrue(caption.endswith("<b>Stars:</b> ⭐ 1,234"))
+        self.assertIn("...", caption)
+
     def test_dry_run_notifier(self) -> None:
         notifier = main.DryRunNotifier()
         self.assertTrue(notifier.send(self.repo))
@@ -219,16 +232,56 @@ class TestNotifier(unittest.TestCase):
 
     @patch("main.requests.get")
     @patch("main.requests.post")
+    def test_telegram_notifier_card_429_falls_back_to_avatar(
+        self, mock_post: MagicMock, mock_get: MagicMock
+    ) -> None:
+        # First call (opengraph) returns 429; second call (avatar) returns 200 image
+        mock_card = MagicMock(ok=False, status_code=429, headers={})
+        mock_avatar = MagicMock(
+            ok=True,
+            status_code=200,
+            headers={"Content-Type": "image/png"},
+            content=b"avatar-bytes",
+        )
+        mock_get.side_effect = [mock_card, mock_avatar]
+        mock_post.return_value = MagicMock(ok=True, status_code=200)
+
+        notifier = main.TelegramNotifier("token", "123")
+        self.assertTrue(notifier.send(self.repo))
+
+        self.assertEqual(mock_get.call_count, 2)
+        mock_get.assert_any_call(
+            "https://opengraph.githubassets.com/trendify/test-owner/test-repo",
+            headers={"User-Agent": main.USER_AGENT},
+            timeout=main.REQUEST_TIMEOUT,
+        )
+        mock_get.assert_any_call(
+            "https://github.com/test-owner.png",
+            headers={"User-Agent": main.USER_AGENT},
+            timeout=main.REQUEST_TIMEOUT,
+        )
+        mock_post.assert_called_once()
+        self.assertEqual(
+            mock_post.call_args[0][0], "https://api.telegram.org/bottoken/sendPhoto"
+        )
+        self.assertEqual(
+            mock_post.call_args[1]["files"]["photo"],
+            ("card.png", b"avatar-bytes"),
+        )
+
+    @patch("main.requests.get")
+    @patch("main.requests.post")
     def test_telegram_notifier_photo_fails_text_fallback(
         self, mock_post: MagicMock, mock_get: MagicMock
     ) -> None:
-        # Image fetch returns non-image content
+        # Both image fetches fail (e.g. 404)
         mock_get.return_value = MagicMock(ok=False, status_code=404, headers={})
         mock_post.return_value = MagicMock(ok=True, status_code=200)
 
         notifier = main.TelegramNotifier("token", "123")
         self.assertTrue(notifier.send(self.repo))
 
+        self.assertEqual(mock_get.call_count, 2)
         mock_post.assert_called_once()
         args, kwargs = mock_post.call_args
         self.assertEqual(args[0], "https://api.telegram.org/bottoken/sendMessage")
