@@ -1,11 +1,16 @@
 {
+  "BerriAI/litellm": "2026-10-09T13:42:19+00:00",
   "EpicGames/raddebugger": "2026-10-09T06:36:07+00:00",
-  "anthropics/knowledge-work-plugins": "2026-10-09T06:36:07+00:00",
-  "boykopovar/AnyPS5": "2026-10-09T06:36:07+00:00",
-  "cathrynlavery/diagram-design": "2026-10-09T06:36:07+00:00",
+  "Robbyant/lingbot-map": "2026-10-09T13:42:25+00:00",
+  "addyosmani/agent-skills": "2026-10-09T13:42:22+00:00",
+  "alibaba/open-code-review": "2026-10-09T13:42:15+00:00",
+  "anthropics/knowledge-work-plugins": "2026-10-09T13:42:15+00:00",
+  "boykopovar/AnyPS5": "2026-10-09T13:42:12+00:00",
+  "cathrynlavery/diagram-design": "2026-10-09T13:42:12+00:00",
   "liquidslr/system-design-notes": "2026-10-09T06:36:07+00:00",
-  "mattpocock/skills": "2026-10-09T06:36:07+00:00",
-  "morluto/rea": "2026-10-09T06:36:07+00:00",
-  "storytold/artcraft": "2026-10-09T06:36:07+00:00",
-  "thedotmack/claude-mem": "2026-10-09T06:36:07+00:00"
+  "mattpocock/skills": "2026-10-09T13:42:12+00:00",
+  "morluto/rea": "2026-10-09T13:42:12+00:00",
+  "storytold/artcraft": "2026-10-09T13:42:22+00:00",
+  "thedotmack/claude-mem": "2026-10-09T06:36:07+00:00",
+  "twostraws/SwiftUI-Agent-Skill": "2026-10-09T13:42:28+00:00"
 }
