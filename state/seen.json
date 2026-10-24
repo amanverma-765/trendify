@@ -1,18 +1,18 @@
 {
-  "NVIDIA/OpenShell": "2026-10-24T21:30:12+00:00",
-  "Nutlope/hallmark": "2026-10-24T21:30:12+00:00",
+  "NVIDIA/OpenShell": "2026-10-24T23:36:38+00:00",
+  "Nutlope/hallmark": "2026-10-24T23:36:38+00:00",
   "OpenBMB/VoxCPM": "2026-10-24T07:10:43+00:00",
   "Renhuai123/ziwei-doushu": "2026-10-24T07:10:43+00:00",
   "SnailSploit/Claude-Red": "2026-10-24T07:10:43+00:00",
   "anthropics/knowledge-work-plugins": "2026-10-24T07:10:43+00:00",
-  "aws/agent-toolkit-for-aws": "2026-10-24T21:30:12+00:00",
-  "cloudflare/security-audit-skill": "2026-10-24T21:30:12+00:00",
-  "google-gemini/gemini-cli": "2026-10-24T21:30:12+00:00",
-  "jbiaojerry/ebook-treasure-chest": "2026-10-24T21:30:12+00:00",
-  "luongnv89/claude-howto": "2026-10-24T21:30:12+00:00",
-  "makecindy/cindy": "2026-10-24T21:30:12+00:00",
+  "aws/agent-toolkit-for-aws": "2026-10-24T23:36:38+00:00",
+  "cloudflare/security-audit-skill": "2026-10-24T23:36:38+00:00",
+  "google-gemini/gemini-cli": "2026-10-24T23:36:38+00:00",
+  "jbiaojerry/ebook-treasure-chest": "2026-10-24T23:36:38+00:00",
+  "luongnv89/claude-howto": "2026-10-24T23:36:38+00:00",
+  "makecindy/cindy": "2026-10-24T23:36:38+00:00",
   "nodejs/node": "2026-10-24T07:10:43+00:00",
-  "pbakaus/impeccable": "2026-10-24T21:30:12+00:00",
+  "pbakaus/impeccable": "2026-10-24T23:36:38+00:00",
   "php/php-src": "2026-10-24T07:10:43+00:00",
-  "pollen-robotics/microduck": "2026-10-24T21:30:12+00:00"
+  "pollen-robotics/microduck": "2026-10-24T23:36:38+00:00"
 }
