@@ -1,19 +1,11 @@
 {
-  "anthropics/claude-quickstarts": "2026-11-09T01:54:43+00:00",
-  "anthropics/skills": "2026-11-09T01:54:43+00:00",
-  "astral-sh/ruff": "2026-11-08T05:49:57+00:00",
-  "cloudflare/security-audit-skill": "2026-11-08T05:49:57+00:00",
-  "dsx-ai-factory/nvke": "2026-11-09T01:54:43+00:00",
-  "google-deepmind/mujoco": "2026-11-09T01:54:43+00:00",
-  "google/skills": "2026-11-08T05:49:57+00:00",
-  "mattpocock/skills": "2026-11-08T05:49:57+00:00",
-  "mbillow/localthings": "2026-11-08T05:49:57+00:00",
-  "meta/astryx": "2026-11-09T01:54:43+00:00",
-  "milind-soni/OpenMausBot": "2026-11-09T01:54:43+00:00",
-  "prometheus/prometheus": "2026-11-08T05:49:57+00:00",
-  "ranxianglei/billion-context": "2026-11-09T01:54:43+00:00",
-  "sherlock-project/sherlock": "2026-11-09T01:54:43+00:00",
-  "tailwindlabs/tailwindcss": "2026-11-08T05:49:57+00:00",
-  "vercel-labs/agent-browser": "2026-11-09T01:54:43+00:00",
-  "zed-industries/zed": "2026-11-08T05:49:57+00:00"
+  "anthropics/claude-quickstarts": "2026-11-09T09:37:18+00:00",
+  "anthropics/skills": "2026-11-09T09:37:18+00:00",
+  "dsx-ai-factory/nvke": "2026-11-09T09:37:18+00:00",
+  "google-deepmind/mujoco": "2026-11-09T09:37:18+00:00",
+  "meta/astryx": "2026-11-09T09:37:18+00:00",
+  "milind-soni/OpenMausBot": "2026-11-09T09:37:18+00:00",
+  "ranxianglei/billion-context": "2026-11-09T09:37:18+00:00",
+  "sherlock-project/sherlock": "2026-11-09T09:37:18+00:00",
+  "vercel-labs/agent-browser": "2026-11-09T09:37:18+00:00"
 }
