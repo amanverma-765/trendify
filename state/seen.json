@@ -1,11 +1,15 @@
 {
-  "anthropics/claude-quickstarts": "2026-11-09T09:37:18+00:00",
-  "anthropics/skills": "2026-11-09T09:37:18+00:00",
+  "ZhuLinsen/daily_stock_analysis": "2026-11-09T20:38:28+00:00",
+  "anthropics/claude-quickstarts": "2026-11-09T20:38:20+00:00",
+  "anthropics/skills": "2026-11-09T20:38:20+00:00",
   "dsx-ai-factory/nvke": "2026-11-09T09:37:18+00:00",
-  "google-deepmind/mujoco": "2026-11-09T09:37:18+00:00",
-  "meta/astryx": "2026-11-09T09:37:18+00:00",
-  "milind-soni/OpenMausBot": "2026-11-09T09:37:18+00:00",
+  "garrytan/gbrain": "2026-11-09T20:38:23+00:00",
+  "google-deepmind/mujoco": "2026-11-09T20:38:20+00:00",
+  "homeassistant-ai/ha-mcp": "2026-11-09T20:38:32+00:00",
+  "meta/astryx": "2026-11-09T20:38:20+00:00",
+  "milind-soni/OpenMausBot": "2026-11-09T20:38:32+00:00",
   "ranxianglei/billion-context": "2026-11-09T09:37:18+00:00",
-  "sherlock-project/sherlock": "2026-11-09T09:37:18+00:00",
-  "vercel-labs/agent-browser": "2026-11-09T09:37:18+00:00"
+  "ruvnet/RuView": "2026-11-09T20:38:26+00:00",
+  "sherlock-project/sherlock": "2026-11-09T20:38:20+00:00",
+  "vercel-labs/agent-browser": "2026-11-09T20:38:23+00:00"
 }
